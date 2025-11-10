@@ -4,7 +4,9 @@ const cheerio = require('cheerio');
 const path = require('path');
 
 const app = express();
-const PORT = 3001;
+const DEFAULT_PORT = process.env.PORT || 3001;
+const TARGET_TERM = 'Yale';
+const REPLACEMENT_TERM = 'Fale';
 
 // Middleware to parse request bodies
 app.use(express.json());
@@ -16,68 +18,129 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+/**
+ * Replace occurrences of "Yale" with "Fale" while preserving the character
+ * casing pattern of the original match.
+ * @param {string} text
+ * @returns {string}
+ */
+function replaceYaleWithFale(text) {
+  if (typeof text !== 'string' || !text) {
+    return text;
+  }
+
+  const replacement = REPLACEMENT_TERM;
+  const pattern = new RegExp(TARGET_TERM, 'gi');
+
+  return text.replace(pattern, (match) => {
+    return replacement
+      .split('')
+      .map((char, index) => {
+        const originalChar = match[index] || '';
+        if (!originalChar) {
+          return char;
+        }
+
+        if (originalChar === originalChar.toUpperCase()) {
+          return char.toUpperCase();
+        }
+
+        if (originalChar === originalChar.toLowerCase()) {
+          return char.toLowerCase();
+        }
+
+        return char;
+      })
+      .join('');
+  });
+}
+
+/**
+ * Apply replacement logic to a Cheerio instance, updating text nodes and
+ * titles while leaving URLs and attributes untouched.
+ * @param {import('cheerio').CheerioAPI} $
+ */
+function applyYaleToFaleTransform($) {
+  const scope = $('body').length ? $('body') : $.root();
+
+  scope
+    .find('*')
+    .addBack()
+    .contents()
+    .filter(function filterTextNodes() {
+      return this.type === 'text';
+    })
+    .each(function transformNode() {
+      const original = typeof this.data === 'string' ? this.data : '';
+      if (!original) {
+        return;
+      }
+
+      const updated = replaceYaleWithFale(original);
+      if (original !== updated) {
+        $(this).replaceWith(updated);
+      }
+    });
+
+  $('title').each((_, element) => {
+    const $element = $(element);
+    const originalTitle = $element.text();
+    const updatedTitle = replaceYaleWithFale(originalTitle);
+    if (originalTitle !== updatedTitle) {
+      $element.text(updatedTitle);
+    }
+  });
+}
+
+/**
+ * Transform raw HTML content by applying Yale → Fale replacements.
+ * @param {string} html
+ * @returns {import('cheerio').CheerioAPI}
+ */
+function transformHtml(html) {
+  const $ = cheerio.load(html);
+  applyYaleToFaleTransform($);
+  return $;
+}
+
 // API endpoint to fetch and modify content
 app.post('/fetch', async (req, res) => {
   try {
     const { url } = req.body;
-    
+
     if (!url) {
       return res.status(400).json({ error: 'URL is required' });
     }
 
-    // Fetch the content from the provided URL
     const response = await axios.get(url);
-    const html = response.data;
+    const $ = transformHtml(response.data);
 
-    // Use cheerio to parse HTML and selectively replace text content, not URLs
-    const $ = cheerio.load(html);
-    
-    // Function to replace text but skip URLs and attributes
-    function replaceYaleWithFale(i, el) {
-      if ($(el).children().length === 0 || $(el).text().trim() !== '') {
-        // Get the HTML content of the element
-        let content = $(el).html();
-        
-        // Only process if it's a text node
-        if (content && $(el).children().length === 0) {
-          // Replace Yale with Fale in text content only
-          content = content.replace(/Yale/g, 'Fale').replace(/yale/g, 'fale');
-          $(el).html(content);
-        }
-      }
-    }
-    
-    // Process text nodes in the body
-    $('body *').contents().filter(function() {
-      return this.nodeType === 3; // Text nodes only
-    }).each(function() {
-      // Replace text content but not in URLs or attributes
-      const text = $(this).text();
-      const newText = text.replace(/Yale/g, 'Fale').replace(/yale/g, 'fale');
-      if (text !== newText) {
-        $(this).replaceWith(newText);
-      }
-    });
-    
-    // Process title separately
-    const title = $('title').text().replace(/Yale/g, 'Fale').replace(/yale/g, 'fale');
-    $('title').text(title);
-    
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       content: $.html(),
-      title: title,
+      title: $('title').text(),
       originalUrl: url
     });
   } catch (error) {
     console.error('Error fetching URL:', error.message);
-    return res.status(500).json({ 
-      error: `Failed to fetch content: ${error.message}` 
+    return res.status(500).json({
+      error: `Failed to fetch content: ${error.message}`
     });
   }
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Faleproxy server running at http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(DEFAULT_PORT, () => {
+    console.log(`Faleproxy server running at http://localhost:${DEFAULT_PORT}`);
+  });
+}
+
+module.exports = {
+  app,
+  replaceYaleWithFale,
+  applyYaleToFaleTransform,
+  transformHtml,
+  DEFAULT_PORT,
+  TARGET_TERM,
+  REPLACEMENT_TERM
+};
