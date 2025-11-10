@@ -135,12 +135,11 @@ if (require.main === module) {
   });
 }
 
-module.exports = {
-  app,
-  replaceYaleWithFale,
-  applyYaleToFaleTransform,
-  transformHtml,
-  DEFAULT_PORT,
-  TARGET_TERM,
-  REPLACEMENT_TERM
-};
+module.exports = app;
+module.exports.app = app;
+module.exports.replaceYaleWithFale = replaceYaleWithFale;
+module.exports.applyYaleToFaleTransform = applyYaleToFaleTransform;
+module.exports.transformHtml = transformHtml;
+module.exports.DEFAULT_PORT = DEFAULT_PORT;
+module.exports.TARGET_TERM = TARGET_TERM;
+module.exports.REPLACEMENT_TERM = REPLACEMENT_TERM;
